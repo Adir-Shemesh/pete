@@ -359,11 +359,11 @@ impl Ptracer {
                         let ret_data = ptrace::getevent(pid)? as u16;
                         let stop = Stop::Seccomp(ret_data);
 
-                        match self.tracee_state_mut(pid) {
-                            Some(state) if *state == State::Attaching => {
+
+                        if let Some(state) = self.tracee_state_mut(pid) {
+                            if *state == State::Attaching {
                                 *state = State::Syscalling;
                             }
-                            _ => unreachable!(),
                         }
 
                         Tracee::new(pid, sig, stop)
