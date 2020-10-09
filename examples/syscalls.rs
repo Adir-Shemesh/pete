@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
     let mut ptracer = Ptracer::new();
 
     // Tracee is in pre-exec ptrace-stop.
-    let tracee = ptracer.spawn(cmd)?;
+    let tracee = ptracer.spawn(cmd, None)?;
     ptracer.restart(tracee, Restart::Syscall)?;
 
     while let Ok(Some(tracee)) = ptracer.wait() {
