@@ -2,7 +2,6 @@ use std::env;
 
 use pete::{Command, Ptracer, Restart};
 
-
 fn main() -> anyhow::Result<()> {
     let argv = env::args().skip(1).collect();
     let mut cmd = Command::new(argv)?;

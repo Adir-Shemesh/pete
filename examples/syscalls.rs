@@ -3,7 +3,6 @@ use std::env;
 
 use pete::{Command, Ptracer, Restart, Stop};
 
-
 fn main() -> anyhow::Result<()> {
     let syscalls = load_syscalls();
 
@@ -21,16 +20,15 @@ fn main() -> anyhow::Result<()> {
         let pc = regs.rip as u64;
 
         match tracee.stop {
-            Stop::SyscallEnterStop(..) |
-            Stop::SyscallExitStop(..)=> {
+            Stop::SyscallEnterStop(..) | Stop::SyscallExitStop(..) => {
                 let rax = regs.orig_rax;
                 let syscall = syscalls.get(&rax).unwrap();
 
                 println!("{:>16x}: [{}], {:?}", pc, syscall, tracee.stop);
-            },
+            }
             _ => {
                 println!("{:>16x}: {:?}", pc, tracee.stop);
-            },
+            }
         }
 
         ptracer.restart(tracee, Restart::Syscall)?;

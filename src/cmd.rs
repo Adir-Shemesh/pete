@@ -3,12 +3,14 @@ use std::ffi::{CString, NulError, OsStr, OsString};
 use std::os::raw::c_char;
 
 use nix::{
-    sys::{signal::{raise, Signal}, ptrace},
+    sys::{
+        ptrace,
+        signal::{raise, Signal},
+    },
     unistd::{fork, ForkResult, Pid},
 };
 
 use crate::error::Error;
-
 
 /// Command to spawn as a child process to be traced.
 #[derive(Clone, Debug)]
@@ -36,15 +38,16 @@ impl Command {
         // Ensure we own NUL-terminated strings to for the foreign exec call.
         //
         // We're heap-allocating, so always do this before forking.
-        let argv: Result<Vec<_>, _> = argv
-            .into_iter()
-            .map(CString::new)
-            .collect();
+        let argv: Result<Vec<_>, _> = argv.into_iter().map(CString::new).collect();
         let argv = argv?;
 
         let env = OsEnv::new()?;
 
-        Ok(Self { argv, env, trace_me: true })
+        Ok(Self {
+            argv,
+            env,
+            trace_me: true,
+        })
     }
 
     pub fn env(&mut self) -> &mut OsEnv {
@@ -89,10 +92,8 @@ impl Command {
                 }
 
                 unreachable!();
-            },
-            ForkResult::Parent { child } => {
-                Ok(child)
-            },
+            }
+            ForkResult::Parent { child } => Ok(child),
         }
     }
 }
@@ -161,10 +162,7 @@ struct NullTerminatedPointerArray<'a> {
 
 impl<'a> NullTerminatedPointerArray<'a> {
     pub fn new(data: &'a [CString]) -> Self {
-        let mut array: Vec<_> = data
-            .iter()
-            .map(|s| s.as_ptr())
-            .collect();
+        let mut array: Vec<_> = data.iter().map(|s| s.as_ptr()).collect();
         array.push(std::ptr::null());
 
         Self { array, _data: data }

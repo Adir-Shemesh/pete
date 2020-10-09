@@ -12,10 +12,9 @@ use crate::{
     error::{Error, Result},
 };
 
-
-pub use nix::unistd::Pid;
 pub use nix::sys::ptrace::Options;
 pub use nix::sys::signal::Signal;
+pub use nix::unistd::Pid;
 
 pub type Registers = libc::user_regs_struct;
 pub type Siginfo = libc::siginfo_t;
@@ -76,7 +75,12 @@ impl Tracee {
         let pending = pending.into();
         let _not_send = PhantomData;
 
-        Self { pid, pending, stop, _not_send }
+        Self {
+            pid,
+            pending,
+            stop,
+            _not_send,
+        }
     }
 
     /// Set a signal to deliver to the stopped process upon restart.
@@ -182,12 +186,9 @@ impl Ptracer {
         let Tracee { pid, pending, .. } = tracee;
 
         let r = match restart {
-            Restart::Step =>
-                ptrace::step(pid, pending),
-            Restart::Continue =>
-                ptrace::cont(pid, pending),
-            Restart::Syscall =>
-                ptrace::syscall(pid, pending),
+            Restart::Step => ptrace::step(pid, pending),
+            Restart::Continue => ptrace::cont(pid, pending),
+            Restart::Syscall => ptrace::syscall(pid, pending),
         };
 
         r.map_err(|source| Error::Restart {
@@ -231,28 +232,28 @@ impl Ptracer {
         use Signal::*;
 
         let status = match wait::waitpid(None, WALL) {
-            Ok(status) =>
-                status,
+            Ok(status) => status,
             Err(nix::Error::Sys(errno)) if errno == nix::errno::Errno::ECHILD =>
-                // No more children to wait on: we're done.
-                return Ok(None),
-            Err(err) =>
-                return Err(err.into()),
+            // No more children to wait on: we're done.
+            {
+                return Ok(None)
+            }
+            Err(err) => return Err(err.into()),
         };
 
         let tracee = match status {
             WaitStatus::Exited(pid, _exit_code) => {
                 self.remove_tracee(pid);
                 return self.wait();
-            },
+            }
             WaitStatus::Signaled(pid, _sig, _is_core_dump) => {
                 self.remove_tracee(pid);
                 return self.wait();
-            },
+            }
             WaitStatus::Stopped(pid, SIGTRAP) => {
                 let stop = Stop::SignalDeliveryStop(pid, SIGTRAP);
                 Tracee::new(pid, None, stop)
-            },
+            }
             WaitStatus::Stopped(pid, sig) => {
                 if sig == SIGSTOP {
                     if let Some(state) = self.tracee_state_mut(pid) {
@@ -272,7 +273,7 @@ impl Ptracer {
                 };
 
                 Tracee::new(pid, sig, stop)
-            },
+            }
             WaitStatus::PtraceEvent(pid, sig, evt_int) => {
                 use ptrace::Event::*;
 
@@ -288,7 +289,7 @@ impl Ptracer {
 
                         let stop = Stop::Fork(pid, new_pid);
                         Tracee::new(pid, sig, stop)
-                    },
+                    }
                     PTRACE_EVENT_CLONE => {
                         let new_pid = Pid::from_raw(ptrace::getevent(pid)? as u32 as i32);
 
@@ -298,7 +299,7 @@ impl Ptracer {
 
                         let stop = Stop::Clone(pid, new_pid);
                         Tracee::new(pid, sig, stop)
-                    },
+                    }
                     PTRACE_EVENT_EXEC => {
                         // We are in one of two cases. The exec has either occurred on the main
                         // thread of the thread group, or not. In either case, the new tid of the
@@ -324,7 +325,7 @@ impl Ptracer {
                         let stop = Stop::Exec(old_pid, pid);
 
                         Tracee::new(pid, sig, stop)
-                    },
+                    }
                     PTRACE_EVENT_EXIT => {
                         // In this context, `PTRACE_GETEVENTMSG` returns the pending wait status
                         // as an `unsigned long`. We are only interested in the low 16-bit word.
@@ -333,26 +334,26 @@ impl Ptracer {
                         self.remove_tracee(pid);
 
                         let stop = match ExitType::parse(status)? {
-                            ExitType::Exit(exit_code) =>
-                                Stop::Exiting(pid, exit_code),
-                            ExitType::Signaled(sig, core_dumped) =>
-                                Stop::Signaling(pid, sig, core_dumped),
+                            ExitType::Exit(exit_code) => Stop::Exiting(pid, exit_code),
+                            ExitType::Signaled(sig, core_dumped) => {
+                                Stop::Signaling(pid, sig, core_dumped)
+                            }
                         };
 
                         Tracee::new(pid, sig, stop)
-                    },
+                    }
                     PTRACE_EVENT_VFORK => {
                         let new_pid = Pid::from_raw(ptrace::getevent(pid)? as u32 as i32);
                         let stop = Stop::Vfork(pid, new_pid);
 
                         Tracee::new(pid, sig, stop)
-                    },
+                    }
                     PTRACE_EVENT_VFORK_DONE => {
                         let new_pid = Pid::from_raw(ptrace::getevent(pid)? as u32 as i32);
                         let stop = Stop::VforkDone(pid, new_pid);
 
                         Tracee::new(pid, sig, stop)
-                    },
+                    }
                     PTRACE_EVENT_SECCOMP => {
                         // `SECCOMP_RET_DATA`, which is the low 16 bits of an int.
                         let ret_data = ptrace::getevent(pid)? as u16;
@@ -361,14 +362,14 @@ impl Ptracer {
                         match self.tracee_state_mut(pid) {
                             Some(state) if *state == State::Attaching => {
                                 *state = State::Syscalling;
-                            },
-                            _ => unreachable!()
+                            }
+                            _ => unreachable!(),
                         }
 
                         Tracee::new(pid, sig, stop)
-                    },
+                    }
                 }
-            },
+            }
             // A signal-delivery-stop never happens between syscall-enter-stop and syscall-exit-stop.
             // It will always happen _after_ syscall-exit-stop, and not necessarily immediately. We
             // may observe ptrace-event-stops in-between -enter and -exit.
@@ -403,31 +404,29 @@ impl Ptracer {
                             State::Syscalling => {
                                 *state = State::Traced;
                                 Stop::SyscallExitStop(pid)
-                            },
+                            }
                             State::Traced => {
                                 *state = State::Syscalling;
                                 Stop::SyscallEnterStop(pid)
-                            },
+                            }
                             State::Attaching => {
                                 // A tracee in this state is waiting for a `SIGSTOP`, which is an
                                 // artifact of `PTRACE_ATTACH`. The next wait status will thus be
                                 // either a `SIGSTOP`, `SIGKILL`, or a `PTRACE_EVENT_EXIT`.
                                 unreachable!()
-                            },
+                            }
                         }
-                    },
+                    }
                     None => {
                         // Assumes any pid we are tracing is also indexed in `self.tracees`.
                         unreachable!()
-                    },
+                    }
                 };
 
                 Tracee::new(pid, None, stop)
-            },
+            }
             // Assume `!WNOHANG`, `!WCONTINUED`.
-            WaitStatus::Continued(_) |
-            WaitStatus::StillAlive =>
-                unreachable!(),
+            WaitStatus::Continued(_) | WaitStatus::StillAlive => unreachable!(),
         };
 
         Ok(Some(tracee))
@@ -505,14 +504,11 @@ fn is_group_stop(pid: Pid, sig: Signal) -> Result<bool> {
             //     ("no such process") if a SIGKILL killed the tracee.)
             //
             match ptrace::getsiginfo(pid) {
-                Err(Error::Sys(Errno::EINVAL)) =>
-                    Ok(true),
-                Err(err) =>
-                    Err(err.into()),
-                Ok(_) =>
-                    Ok(false)
+                Err(Error::Sys(Errno::EINVAL)) => Ok(true),
+                Err(err) => Err(err.into()),
+                Ok(_) => Ok(false),
             }
-        },
+        }
         _ => {
             // Definitely not a group-stop.
             //
@@ -523,7 +519,7 @@ fn is_group_stop(pid: Pid, sig: Signal) -> Result<bool> {
             //     If the tracer sees something else, it can't be a group-stop.
             //
             Ok(false)
-        },
+        }
     }
 }
 
@@ -538,9 +534,7 @@ fn into_ptrace_event_unchecked(evt: i32) -> ptrace::Event {
         _ if evt == (PTRACE_EVENT_VFORK_DONE as i32) => PTRACE_EVENT_VFORK_DONE,
         _ if evt == (PTRACE_EVENT_EXIT as i32) => PTRACE_EVENT_EXIT,
         _ if evt == (PTRACE_EVENT_SECCOMP as i32) => PTRACE_EVENT_SECCOMP,
-        128 =>
-            unimplemented!("`PTRACE_EVENT_STOP` not supported in upstream dependency"),
-        _ =>
-            unreachable!() // False for SEIZE
+        128 => unimplemented!("`PTRACE_EVENT_STOP` not supported in upstream dependency"),
+        _ => unreachable!(), // False for SEIZE
     }
 }
