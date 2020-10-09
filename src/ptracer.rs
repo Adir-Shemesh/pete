@@ -198,9 +198,9 @@ impl Ptracer {
         })
     }
 
-    pub fn spawn(&mut self, cmd: Command) -> Result<Tracee> {
+    pub fn spawn(&mut self, cmd: Command, on_fork: Option<fn() -> ()>) -> Result<Tracee> {
         // Fork, request TRACEME, raise a pre-exec SIGSTOP.
-        let pid = cmd.trace_me(true).fork_exec()?;
+        let pid = cmd.trace_me(true).fork_exec(on_fork)?;
 
         self.set_tracee_state(pid, State::Attaching);
 
@@ -235,9 +235,9 @@ impl Ptracer {
             Ok(status) => status,
             Err(nix::Error::Sys(errno)) if errno == nix::errno::Errno::ECHILD =>
             // No more children to wait on: we're done.
-            {
-                return Ok(None)
-            }
+                {
+                    return Ok(None);
+                }
             Err(err) => return Err(err.into()),
         };
 

@@ -64,7 +64,7 @@ impl Command {
     ///
     /// If `self.trace_me`, the child process will set itself as a tracee of the parent,
     /// then raise `SIGSTOP` so the parent can resume and observe it without a race.
-    pub fn fork_exec(self) -> Result<Pid, Error> {
+    pub fn fork_exec(self, on_fork: Option<fn() -> ()>) -> Result<Pid, Error> {
         // These calls heap-allocate, and must occur pre-fork.
         let argv = NullTerminatedPointerArray::new(&self.argv);
         let env = self.env.as_vec();
@@ -74,6 +74,10 @@ impl Command {
             ForkResult::Child => {
                 // If any post-fork call fails, `panic`, since `?` may call `malloc`
                 // via `Into`, which is not async-signal-safe.
+
+                if let Some(callback) = on_fork {
+                    callback()
+                }
 
                 if self.trace_me {
                     ptrace::traceme()?;
