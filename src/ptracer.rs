@@ -181,6 +181,10 @@ impl Ptracer {
         Self { options, tracees }
     }
 
+    pub fn set_global_options(&mut self, options: Options) {
+        self.options = options;
+    }
+
     /// Resume the stopped tracee, delivering any pending signal.
     pub fn restart(&mut self, tracee: Tracee, restart: Restart) -> Result<()> {
         let Tracee { pid, pending, .. } = tracee;
